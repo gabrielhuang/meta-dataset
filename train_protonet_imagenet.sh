@@ -1,5 +1,5 @@
 #!/bin/bash
-ulimit -n 1000000 # increase open file limit
+ulimit -n 100000 # increase open file limit
 export SOURCE=imagenet  # all/imagenet
 #for MODEL in baselinefinetune prototypical matching maml maml_init_with_proto
 for MODEL in prototypical
