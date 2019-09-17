@@ -449,6 +449,12 @@ class Trainer(object):
             for split in self.required_splits
         ]))
 
+    # CentroidNetworkLearner has other metrics; return a list of metrics
+    self.metrics = dict(
+        zip(self.required_splits, [
+            self.learners[split].get_metrics()
+            for split in self.required_splits
+        ]))
 
     # Set self.way, self.shots to Tensors for the way/shots of the next episode.
     self.set_way_shots_classes_logits_targets()
@@ -549,6 +555,11 @@ class Trainer(object):
       acc_summary = tf.summary.scalar('%s_acc' % split, self.accs[split])
       standard_summaries.append(loss_summary)
       standard_summaries.append(acc_summary)
+
+      # add other metrics
+      for metric_name, metric_tensor in self.metrics[split].items():
+        metric_summary = tf.summary.scalar('{}_{}'.format(split, metric_name), metric_tensor)
+        standard_summaries.append(metric_summary)
 
     # Add summaries for the way / shot / logits / targets of the learners.
     evaluation_summaries = self.add_eval_summaries()
@@ -1007,8 +1018,8 @@ class Trainer(object):
 
     while global_step < self.learn_config.num_updates:
       # Perform the next update.
-      (_, train_loss, train_acc, global_step) = self.sess.run([
-          self.train_op, self.losses['train'], self.accs['train'],
+      (_, train_loss, train_acc, train_metrics, global_step) = self.sess.run([
+          self.train_op, self.losses['train'], self.accs['train'], self.metrics['train'],
           updated_global_step
       ])
 
@@ -1022,6 +1033,8 @@ class Trainer(object):
             'Valid accuracy %f +/- %f.\n' %
             (global_step, train_loss, train_acc, self.valid_acc, self.valid_ci))
         tf.logging.info(message)
+
+        tf.logging.info('Metrics {}'.format(train_metrics))
 
         # Update summaries.
         summaries = self.sess.run(self.standard_summaries)
@@ -1043,6 +1056,8 @@ class Trainer(object):
        valid_ci_summary) = self.evaluate('valid')
       # Validation summaries are updated every time validation happens which is
       # every validate_every steps instead of log_every steps.
+      # Those are called mean valid acc / test valid ci
+      # as opposed to the running averages
       if self.summary_writer:
         self.summary_writer.add_summary(valid_acc_summary, global_step)
         self.summary_writer.add_summary(valid_ci_summary, global_step)
@@ -1058,12 +1073,21 @@ class Trainer(object):
         (split, num_eval_trials))
     accuracies = []
     for eval_trial_num in range(num_eval_trials):
-      acc, summaries = self.sess.run(
-          [self.accs[split], self.evaluation_summaries])
+      acc, metrics, summaries = self.sess.run(
+          [self.accs[split], self.metrics[split], self.evaluation_summaries])
       accuracies.append(acc)
+
       # Write evaluation summaries.
       if split == self.eval_split and self.summary_writer:
         self.summary_writer.add_summary(summaries, eval_trial_num)
+
+      # add accuracy summaries
+      # Log training progress.
+      if split=='test' and self.summary_writer:
+        acc_summary = tf.Summary()
+        acc_summary.value.add(tag='test_acc', simple_value=acc)
+        self.summary_writer.add_summary(acc_summary, num_eval_trials)
+
     tf.logging.info('Done.')
 
     mean_acc = np.mean(accuracies)
@@ -1072,6 +1096,16 @@ class Trainer(object):
     if split == 'test':
       tf.logging.info('Test accuracy: %f, +/- %f.\n' % (mean_acc, ci_acc))
 
+      # Text Summary
+      value = 'Dataset: {}\n<br>Test accuracy: {:.3f}, +/- {:.3f}\n<br>Episodes: {}'.format('|'.join(self.eval_dataset_list), mean_acc, ci_acc, num_eval_trials)
+      text_tensor = tf.make_tensor_proto(value, dtype=tf.string)
+      meta = tf.SummaryMetadata()
+      meta.plugin_data.plugin_name = "text"
+      text_summary = tf.Summary()
+      text_summary.value.add(tag="Test Accuracy", metadata=meta, tensor=text_tensor)
+      self.summary_writer.add_summary(text_summary, num_eval_trials)
+
+    # Used in maybe_evaluate()
     mean_acc_summary = tf.Summary()
     mean_acc_summary.value.add(tag='mean %s acc' % split, simple_value=mean_acc)
     ci_acc_summary = tf.Summary()

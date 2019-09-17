@@ -73,6 +73,43 @@ def compute_prototypes(embeddings, labels):
   return prototypes
 
 
+def compute_class_prototypes_and_variances(embeddings, labels):
+
+  #  [example, class] ->  [example, class, dims=1]
+  labels_expanded = tf.expand_dims(labels, 2)
+
+  # [class]
+  images_per_class = tf.reduce_sum(labels, 0)
+
+  # [example, dims] -> [example, class=1, dims]
+  embeddings_expanded = tf.expand_dims(embeddings, 1)
+
+  # [class, dim]
+  average = tf.reduce_sum(embeddings_expanded*labels_expanded, 0) / tf.expand_dims(images_per_class, 1)
+  # [class]
+  normed_average = tf.reduce_mean(tf.math.square(average), 1)
+
+  # [example, class=1]
+  normed_embeddings = tf.reduce_mean(tf.math.square(embeddings_expanded), 2)
+  # [class]
+  average_of_normed = tf.reduce_sum(labels*normed_embeddings, 0) / images_per_class
+
+  # [num_classes]
+  variances = average_of_normed - normed_average
+
+  # Average the variances of all classes.
+  # WARNING: Not sure if it should be sum or average here ...
+  sum_variances = tf.reduce_sum(variances)
+  mean_variances = tf.reduce_mean(variances)
+
+  prototypes = average
+  return prototypes, sum_variances, mean_variances
+
+
+
+
+
+
 # TODO(tylerzhu): Accumulate batch norm statistics (moving {var, mean})
 # during training and use them during testing. However need to be careful
 # about leaking information across episodes.
@@ -744,6 +781,11 @@ class Learner(object):
   def forward_pass(self):
     """Returns the features of the given batch or episode."""
 
+  def get_metrics(self):
+      '''
+      :return: other metrics we want (tf.Tensors)
+      '''
+      return {}
 
 @gin.configurable
 class PrototypicalNetworkLearner(Learner):
@@ -832,6 +874,45 @@ class PrototypicalNetworkLearner(Learner):
     self.test_predictions = tf.cast(tf.argmax(self.test_logits, 1), tf.int32)
     correct = tf.equal(self.episode.test_labels, self.test_predictions)
     return tf.reduce_mean(tf.cast(correct, tf.float32))
+
+
+@gin.configurable
+class CentroidNetworkLearner(PrototypicalNetworkLearner):
+
+  def __init__(self, is_training, transductive_batch_norm,
+                 backprop_through_moments, ema_object, embedding_fn, reader,
+                 weight_decay, center_loss):
+    PrototypicalNetworkLearner.__init__(self,
+                                            is_training, transductive_batch_norm,
+                                            backprop_through_moments, ema_object, embedding_fn, reader, weight_decay)
+    self.center_loss = center_loss
+    tf.logging.info('CentroidNetworkLearner: weight_decay {}'.format(self.center_loss))
+
+  def compute_loss_aux(self):
+    """Returns the loss of the Prototypical Network."""
+    onehot_train_labels = tf.one_hot(self.episode.train_labels, self.way)
+    self.prototypes, self.sum_variances, self.mean_variances = compute_class_prototypes_and_variances(self.train_embeddings,
+                                                                                 onehot_train_labels)
+    self.test_logits = self.compute_logits()
+    cross_entropy_loss = tf.nn.sparse_softmax_cross_entropy_with_logits(
+        labels=self.episode.test_labels, logits=self.test_logits)
+    cross_entropy_loss = tf.reduce_mean(cross_entropy_loss)
+    regularization = tf.reduce_sum(
+        tf.get_collection(tf.GraphKeys.REGULARIZATION_LOSSES))
+    return cross_entropy_loss, self.weight_decay * regularization, self.center_loss * self.sum_variances
+
+  def compute_loss(self):
+    cross_entropy_loss, weight_decay, center_loss = self.compute_loss_aux()
+    total_loss = cross_entropy_loss + weight_decay + center_loss
+    return total_loss
+
+  def get_metrics(self):
+    loss, weight_decay, center_loss = self.compute_loss_aux()
+    metrics = {
+        'weight_decay': weight_decay,
+        'center_loss': center_loss
+    }
+    return metrics
 
 
 @gin.configurable
@@ -1739,6 +1820,7 @@ class MAMLLearner(Learner):
     loss = tf.losses.softmax_cross_entropy(onehot_test_labels, self.test_logits)
     regularization = tf.reduce_sum(
         tf.get_collection(tf.GraphKeys.REGULARIZATION_LOSSES))
+
     loss = loss + self.weight_decay * regularization
     return loss
 

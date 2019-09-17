@@ -47,6 +47,10 @@ from meta_dataset import trainer
 from meta_dataset.data import config  # pylint: disable=unused-import
 import tensorflow as tf
 
+# Remove deprecated warnings
+from tensorflow.python.util import deprecation
+deprecation._PRINT_DEPRECATION_WARNINGS = False
+
 tf.flags.DEFINE_string('train_checkpoint_dir', '/tmp/metadataset',
                        'The directory to save checkpoints.')
 
@@ -97,10 +101,11 @@ NAME_TO_LEARNER = {
     'MatchingNet': learner.MatchingNetworkLearner,
     'PrototypicalNet': learner.PrototypicalNetworkLearner,
     'MAML': learner.MAMLLearner,
+    'CentroidNetworkLearner': learner.CentroidNetworkLearner,
 }
 
 BATCH_LEARNERS = ['Baseline', 'BaselineFinetune']
-EPISODIC_LEARNERS = ['MatchingNet', 'PrototypicalNet', 'MAML']
+EPISODIC_LEARNERS = ['MatchingNet', 'PrototypicalNet', 'MAML', 'CentroidNetworkLearner']
 
 
 def main(unused_argv):
