@@ -1086,7 +1086,7 @@ class Trainer(object):
       if split=='test' and self.summary_writer:
         acc_summary = tf.Summary()
         acc_summary.value.add(tag='test_acc', simple_value=acc)
-        self.summary_writer.add_summary(acc_summary, num_eval_trials)
+        self.summary_writer.add_summary(acc_summary, eval_trial_num)
 
     tf.logging.info('Done.')
 
