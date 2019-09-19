@@ -456,6 +456,13 @@ class Trainer(object):
             for split in self.required_splits
         ]))
 
+    # CentroidNetworkLearner needs to return embeddings
+    self.tensors_for_metrics = dict(
+        zip(self.required_splits, [
+            self.learners[split].get_tensors_for_metrics()
+            for split in self.required_splits
+        ]))
+
     # Set self.way, self.shots to Tensors for the way/shots of the next episode.
     self.set_way_shots_classes_logits_targets()
 
@@ -1018,10 +1025,13 @@ class Trainer(object):
 
     while global_step < self.learn_config.num_updates:
       # Perform the next update.
-      (_, train_loss, train_acc, train_metrics, global_step) = self.sess.run([
+      (_, train_loss, train_acc, train_metrics, train_tensors_for_metrics, global_step) = self.sess.run([
           self.train_op, self.losses['train'], self.accs['train'], self.metrics['train'],
-          updated_global_step
+          self.tensors_for_metrics['train'], updated_global_step
       ])
+
+      train_other_metrics = self.learners['train'].get_other_metrics(train_tensors_for_metrics)
+      tf.logging.info('Other metrics {}'.format(train_other_metrics))
 
       # Maybe validate, depending on the global step's value.
       self.maybe_evaluate(global_step)
@@ -1073,9 +1083,14 @@ class Trainer(object):
         (split, num_eval_trials))
     accuracies = []
     for eval_trial_num in range(num_eval_trials):
-      acc, metrics, summaries = self.sess.run(
-          [self.accs[split], self.metrics[split], self.evaluation_summaries])
+      acc, metrics, tensors_for_metrics, summaries = self.sess.run(
+          [self.accs[split], self.metrics[split], self.tensors_for_metrics[split], self.evaluation_summaries])
       accuracies.append(acc)
+
+      # Metrics, will need to log here
+      other_metrics = self.learners['train'].get_other_metrics(tensors_for_metrics)
+      tf.logging.info('Other metrics {}'.format(other_metrics))
+
 
       # Write evaluation summaries.
       if split == self.eval_split and self.summary_writer:

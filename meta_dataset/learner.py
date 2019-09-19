@@ -27,6 +27,8 @@ from six.moves import range
 from six.moves import zip
 import tensorflow as tf
 
+from . import centroid_helpers
+
 MAX_WAY = 50  # The maximum number of classes we will see in any batch.
 
 
@@ -782,10 +784,21 @@ class Learner(object):
     """Returns the features of the given batch or episode."""
 
   def get_metrics(self):
-      '''
-      :return: other metrics we want (tf.Tensors)
-      '''
-      return {}
+    '''
+    :return: other metrics we want (tf.Tensors)
+    '''
+    return {}
+
+  def get_tensors_for_metrics(self):
+    '''
+    :return: other metrics we want (tf.Tensors)
+    '''
+    return {}
+
+  def get_other_metrics(self, tensors_for_metrics):
+    return {}
+
+
 
 @gin.configurable
 class PrototypicalNetworkLearner(Learner):
@@ -881,12 +894,21 @@ class CentroidNetworkLearner(PrototypicalNetworkLearner):
 
   def __init__(self, is_training, transductive_batch_norm,
                  backprop_through_moments, ema_object, embedding_fn, reader,
-                 weight_decay, center_loss):
+                 weight_decay, center_loss, center_loss_normalize='sum',
+                 normalize_by_dim=True, sinkhorn_regularization=1.):
     PrototypicalNetworkLearner.__init__(self,
                                             is_training, transductive_batch_norm,
                                             backprop_through_moments, ema_object, embedding_fn, reader, weight_decay)
     self.center_loss = center_loss
+    assert center_loss_normalize in ('mean', 'sum')
+    self.center_loss_normalize = center_loss_normalize
     tf.logging.info('CentroidNetworkLearner: weight_decay {}'.format(self.center_loss))
+    self.normalize_by_dim = normalize_by_dim
+    self.sinkhorn_regularization = sinkhorn_regularization
+
+    # One hote representaitons
+    self.train_labels_onehot = tf.one_hot(self.episode.train_labels, self.way)
+    self.test_labels_onehot = tf.one_hot(self.episode.test_labels, self.way)
 
   def compute_loss_aux(self):
     """Returns the loss of the Prototypical Network."""
@@ -894,17 +916,34 @@ class CentroidNetworkLearner(PrototypicalNetworkLearner):
     self.prototypes, self.sum_variances, self.mean_variances = compute_class_prototypes_and_variances(self.train_embeddings,
                                                                                  onehot_train_labels)
     self.test_logits = self.compute_logits()
+
+    if self.center_loss_normalize == 'mean':
+      variances = self.mean_variances
+    else:
+      variances = self.sum_variances
+
     cross_entropy_loss = tf.nn.sparse_softmax_cross_entropy_with_logits(
         labels=self.episode.test_labels, logits=self.test_logits)
     cross_entropy_loss = tf.reduce_mean(cross_entropy_loss)
     regularization = tf.reduce_sum(
         tf.get_collection(tf.GraphKeys.REGULARIZATION_LOSSES))
-    return cross_entropy_loss, self.weight_decay * regularization, self.center_loss * self.sum_variances
+    return cross_entropy_loss, self.weight_decay * regularization, self.center_loss * variances
 
   def compute_loss(self):
     cross_entropy_loss, weight_decay, center_loss = self.compute_loss_aux()
     total_loss = cross_entropy_loss + weight_decay + center_loss
     return total_loss
+
+  def get_tensors_for_metrics(self):
+    return {
+      'support_embeddings': self.train_embeddings,
+      'query_embeddings': self.test_embeddings,
+      'support_labels': self.episode.train_labels,
+      'query_labels': self.episode.test_labels,
+      'support_labels_onehot': self.train_labels_onehot,
+      'query_labels_onehot': self.test_labels_onehot,
+      'way': self.way
+    }
 
   def get_metrics(self):
     loss, weight_decay, center_loss = self.compute_loss_aux()
@@ -913,6 +952,12 @@ class CentroidNetworkLearner(PrototypicalNetworkLearner):
         'center_loss': center_loss
     }
     return metrics
+
+  def get_other_metrics(self, tensors_for_metrics):
+    '''
+    Return metrics such as clustering and unsupervised accuracy
+    '''
+    return centroid_helpers.get_clustering_metrics(tensors_for_metrics, self.sinkhorn_regularization, self.normalize_by_dim)
 
 
 @gin.configurable
