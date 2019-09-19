@@ -346,8 +346,8 @@ def clustering_loss(embedded_sample, regularization, clustering_type, normalize_
   return {
     'ClusteringAcc_softmax': all_support_clustering_accuracy['softmax'],
     'ClusteringAcc_sinkhorn': all_support_clustering_accuracy['sinkhorn'],
-    'QueryAcc_softmax': all_query_clustering_accuracy['softmax'],
-    'QueryAcc_sinkhorn': all_query_clustering_accuracy['sinkhorn'],
+    'UnsupervisedAcc_softmax': all_query_clustering_accuracy['softmax'],
+    'UnsupervisedAcc_sinkhorn': all_query_clustering_accuracy['sinkhorn'],
   }
 
 
