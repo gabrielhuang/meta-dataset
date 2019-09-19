@@ -1030,8 +1030,9 @@ class Trainer(object):
           self.tensors_for_metrics['train'], updated_global_step
       ])
 
-      train_other_metrics = self.learners['train'].get_other_metrics(train_tensors_for_metrics)
-      tf.logging.info('Other metrics {}'.format(train_other_metrics))
+      # TODO: not log every step
+      #train_other_metrics = self.learners['train'].get_other_metrics(train_tensors_for_metrics)
+      #tf.logging.info('Other metrics {}'.format(train_other_metrics))
 
       # Maybe validate, depending on the global step's value.
       self.maybe_evaluate(global_step)
@@ -1087,9 +1088,10 @@ class Trainer(object):
           [self.accs[split], self.metrics[split], self.tensors_for_metrics[split], self.evaluation_summaries])
       accuracies.append(acc)
 
+      # TODO: reactivate
       # Metrics, will need to log here
-      other_metrics = self.learners['train'].get_other_metrics(tensors_for_metrics)
-      tf.logging.info('Other metrics {}'.format(other_metrics))
+      #other_metrics = self.learners['train'].get_other_metrics(tensors_for_metrics)
+      #tf.logging.info('Other metrics {}'.format(other_metrics))
 
 
       # Write evaluation summaries.
