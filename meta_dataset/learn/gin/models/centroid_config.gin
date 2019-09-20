@@ -1,0 +1,8 @@
+include 'meta_dataset/learn/gin/models/learner_config.gin'
+LearnerConfig.episodic = True
+LearnerConfig.train_learner = 'CentroidNetworkLearner'
+LearnerConfig.eval_learner = 'CentroidNetworkLearner'
+weight_decay = 1e-4
+CentroidNetworkLearner.weight_decay = %weight_decay
+CentroidNetworkLearner.center_loss = 1
+CentroidNetworkLearner.sinkhorn_regularization = 1

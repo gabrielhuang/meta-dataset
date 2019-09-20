@@ -58,6 +58,23 @@ if not ENABLE_DATA_OPTIMIZATIONS:
   TF_DATA_OPTIONS.experimental_optimization.apply_default_optimizations = False
 
 
+def make_summary(tag, val):
+  '''
+  Helper for manually creating a tensorboard summary
+  '''
+  summary = tf.Summary()
+  summary.value.add(tag=tag, simple_value=val)
+  return summary
+
+
+def make_text_summary(tag, text):
+  text_tensor = tf.make_tensor_proto(text, dtype=tf.string)
+  meta = tf.SummaryMetadata()
+  meta.plugin_data.plugin_name = "text"
+  text_summary = tf.Summary()
+  text_summary.value.add(tag=tag, metadata=meta, tensor=text_tensor)
+  return text_summary
+
 
 @gin.configurable('benchmark')
 def get_datasets_and_restrictions(train_datasets='',
@@ -453,6 +470,13 @@ class Trainer(object):
     self.metrics = dict(
         zip(self.required_splits, [
             self.learners[split].get_metrics()
+            for split in self.required_splits
+        ]))
+
+    # CentroidNetworkLearner needs to return embeddings
+    self.tensors_for_metrics = dict(
+        zip(self.required_splits, [
+            self.learners[split].get_tensors_for_metrics()
             for split in self.required_splits
         ]))
 
@@ -1012,30 +1036,42 @@ class Trainer(object):
     # Dummy variables so that logging works even if called before evaluation.
     self.valid_acc = np.nan
     self.valid_ci = np.nan
+    self.valid_other_metrics = {}
+    self.valid_other_metrics_ci = {}
 
     # Compute the initial validation performance before starting the training.
     self.maybe_evaluate(global_step)
 
     while global_step < self.learn_config.num_updates:
       # Perform the next update.
-      (_, train_loss, train_acc, train_metrics, global_step) = self.sess.run([
+      (_, train_loss, train_acc, train_metrics, train_tensors_for_metrics, global_step) = self.sess.run([
           self.train_op, self.losses['train'], self.accs['train'], self.metrics['train'],
-          updated_global_step
+          self.tensors_for_metrics['train'], updated_global_step
       ])
+
+      # Only compute Clustering accuracy during evaluation
+      #train_other_metrics = self.learners['train'].get_other_metrics(train_tensors_for_metrics)
+      #tf.logging.info('Other metrics {}'.format(train_other_metrics))
 
       # Maybe validate, depending on the global step's value.
       self.maybe_evaluate(global_step)
 
       # Log training progress.
       if not global_step % self.learn_config.log_every:
+        tf.logging.info('*'*32 + '\n')
         message = (
             'Update %d. Train loss: %f, Train accuracy: %f, '
-            'Valid accuracy %f +/- %f.\n' %
+            'Valid accuracy %f +/- %f.' %
             (global_step, train_loss, train_acc, self.valid_acc, self.valid_ci))
         tf.logging.info(message)
 
-        tf.logging.info('Metrics {}'.format(train_metrics))
+        # also print other metrics
+        for key in train_metrics:
+          tf.logging.info('-> Train metric {}: {:.5f}'.format(key, train_metrics[key]))
 
+        for key in self.valid_other_metrics:
+          tf.logging.info('-> Valid {}: {:.5f} +/- {:.5f}'.format(key, self.valid_other_metrics[key],
+                                                                  self.valid_other_metrics_ci[key]))
         # Update summaries.
         summaries = self.sess.run(self.standard_summaries)
         if self.summary_writer:
@@ -1052,8 +1088,10 @@ class Trainer(object):
     """Maybe perform evaluation, depending on the value of global_step."""
     if not global_step % self.learn_config.validate_every:
       # Get the validation accuracy and confidence interval.
-      (valid_acc, valid_ci, valid_acc_summary,
-       valid_ci_summary) = self.evaluate('valid')
+      (valid_acc, valid_ci,
+       valid_acc_summary, valid_ci_summary,
+       valid_other_metrics, valid_other_metrics_ci,
+       valid_other_metrics_summary, valid_other_metrics_ci_summary) = self.evaluate('valid')
       # Validation summaries are updated every time validation happens which is
       # every validate_every steps instead of log_every steps.
       # Those are called mean valid acc / test valid ci
@@ -1061,8 +1099,18 @@ class Trainer(object):
       if self.summary_writer:
         self.summary_writer.add_summary(valid_acc_summary, global_step)
         self.summary_writer.add_summary(valid_ci_summary, global_step)
+
+        # Also write evaluation metrics
+        for key in valid_other_metrics_summary:
+          self.summary_writer.add_summary(valid_other_metrics_summary[key], global_step)
+          self.summary_writer.add_summary(valid_other_metrics_ci_summary[key], global_step)
+
       self.valid_acc = valid_acc
       self.valid_ci = valid_ci
+
+      # Save for logging during training
+      self.valid_other_metrics = valid_other_metrics
+      self.valid_other_metrics_ci = valid_other_metrics_ci
 
 
   def evaluate(self, split):
@@ -1072,46 +1120,69 @@ class Trainer(object):
         'Performing evaluation of the %s split using %d episodes...' %
         (split, num_eval_trials))
     accuracies = []
+    all_other_metrics = {}
+
     for eval_trial_num in range(num_eval_trials):
-      acc, metrics, summaries = self.sess.run(
-          [self.accs[split], self.metrics[split], self.evaluation_summaries])
+      acc, metrics, tensors_for_metrics, summaries = self.sess.run(
+          [self.accs[split], self.metrics[split], self.tensors_for_metrics[split], self.evaluation_summaries])
       accuracies.append(acc)
+
+      # Compute metrics
+      other_metrics = self.learners[split].get_other_metrics(tensors_for_metrics)
+      tf.logging.info('Other metrics {}'.format(other_metrics))
+
+      # Accumulate
+      for key in other_metrics:
+        all_other_metrics.setdefault(key, [])
+        all_other_metrics[key].append(other_metrics[key])
 
       # Write evaluation summaries.
       if split == self.eval_split and self.summary_writer:
         self.summary_writer.add_summary(summaries, eval_trial_num)
 
-      # add accuracy summaries
-      # Log training progress.
+      # If split is test, it's nice to track progress as we go
+      # In that case, evaluate() is run only once.
       if split=='test' and self.summary_writer:
-        acc_summary = tf.Summary()
-        acc_summary.value.add(tag='test_acc', simple_value=acc)
-        self.summary_writer.add_summary(acc_summary, num_eval_trials)
+        self.summary_writer.add_summary(make_summary('EVAL_test_acc', acc), eval_trial_num)
+        for key in other_metrics:
+          self.summary_writer.add_summary(make_summary('EVAL_test_{}'.format(key), other_metrics[key]), eval_trial_num)
 
-    tf.logging.info('Done.')
 
+    tf.logging.info('Evaluation Done.')
+
+    # Accumulate accuracy
     mean_acc = np.mean(accuracies)
     ci_acc = np.std(accuracies) * 1.96 / np.sqrt(len(accuracies))  # confidence
-
-    if split == 'test':
-      tf.logging.info('Test accuracy: %f, +/- %f.\n' % (mean_acc, ci_acc))
-
-      # Text Summary
-      value = 'Dataset: {}\n<br>Test accuracy: {:.3f}, +/- {:.3f}\n<br>Episodes: {}'.format('|'.join(self.eval_dataset_list), mean_acc, ci_acc, num_eval_trials)
-      text_tensor = tf.make_tensor_proto(value, dtype=tf.string)
-      meta = tf.SummaryMetadata()
-      meta.plugin_data.plugin_name = "text"
-      text_summary = tf.Summary()
-      text_summary.value.add(tag="Test Accuracy", metadata=meta, tensor=text_tensor)
-      self.summary_writer.add_summary(text_summary, num_eval_trials)
-
-    # Used in maybe_evaluate()
+    # Generate summaries for maybe_evaluate()
     mean_acc_summary = tf.Summary()
     mean_acc_summary.value.add(tag='mean %s acc' % split, simple_value=mean_acc)
     ci_acc_summary = tf.Summary()
     ci_acc_summary.value.add(tag='%s acc CI' % split, simple_value=ci_acc)
 
-    return mean_acc, ci_acc, mean_acc_summary, ci_acc_summary
+    # Accumulate other metrics
+    mean_other_metrics = {key:np.mean(val) for key,val in all_other_metrics.items()}
+    ci_other_metrics = {key:1.96 * np.std(val) / np.sqrt(len(val)) for key,val in all_other_metrics.items()}
+    # Generate summaries for maybe_evaluate()
+    mean_other_metrics_summary = {}
+    ci_other_metrics_summary = {}
+    for key in mean_other_metrics:
+      mean_other_metrics_summary[key] = make_summary('{}_mean_{}'.format(split, key), mean_other_metrics[key])
+      ci_other_metrics_summary[key] = make_summary('{}_ci_{}'.format(split, key), ci_other_metrics[key])
+
+    if split == 'test':
+      tf.logging.info('Test accuracy: %f, +/- %f.\n' % (mean_acc, ci_acc))
+      # Text Summary
+      lines = [
+        'Dataset: {} ({} episodes)'.format('|'.join(self.eval_dataset_list), num_eval_trials),
+        'Test accuracy: {:.5f}, +/- {:.5f}'.format(mean_acc, ci_acc)
+      ]
+      for key in mean_other_metrics:
+        lines.append('Test {}: {:.5f}, +/- {:.5f}'.format(key, mean_other_metrics[key]), ci_other_metrics[key])
+      self.summary_writer.add_summary(make_text_summary('<br>\n'.join(lines), num_eval_trials))
+
+    return (mean_acc, ci_acc, mean_acc_summary, ci_acc_summary,
+            mean_other_metrics, ci_other_metrics, mean_other_metrics_summary, ci_other_metrics_summary)
+
 
   def add_eval_summaries_split(self, split):
     """Returns split's summaries of way / shot / classes / logits / targets."""
