@@ -36,6 +36,7 @@ import six
 from six.moves import range
 from six.moves import zip
 import tensorflow as tf
+from tqdm import tqdm
 
 from tensorflow.core.protobuf import rewriter_config_pb2  # pylint: disable=g-direct-tensorflow-import
 
@@ -1122,7 +1123,7 @@ class Trainer(object):
     accuracies = []
     all_other_metrics = {}
 
-    for eval_trial_num in range(num_eval_trials):
+    for eval_trial_num in tqdm(range(num_eval_trials)):
       acc, metrics, tensors_for_metrics, summaries = self.sess.run(
           [self.accs[split], self.metrics[split], self.tensors_for_metrics[split], self.evaluation_summaries])
       accuracies.append(acc)
@@ -1177,8 +1178,8 @@ class Trainer(object):
         'Test accuracy: {:.5f}, +/- {:.5f}'.format(mean_acc, ci_acc)
       ]
       for key in mean_other_metrics:
-        lines.append('Test {}: {:.5f}, +/- {:.5f}'.format(key, mean_other_metrics[key]), ci_other_metrics[key])
-      self.summary_writer.add_summary(make_text_summary('<br>\n'.join(lines), num_eval_trials))
+        lines.append('Test {}: {:.5f}, +/- {:.5f}'.format(key, mean_other_metrics[key], ci_other_metrics[key]))
+      self.summary_writer.add_summary(make_text_summary('Summary', '<br>\n'.join(lines)), num_eval_trials)
 
     return (mean_acc, ci_acc, mean_acc_summary, ci_acc_summary,
             mean_other_metrics, ci_other_metrics, mean_other_metrics_summary, ci_other_metrics_summary)
