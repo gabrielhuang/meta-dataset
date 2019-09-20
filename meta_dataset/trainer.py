@@ -1227,6 +1227,14 @@ class Trainer(object):
       tf.logging.info('\n'.join(lines))
       tf.logging.info('*'*32)
 
+      # Write the lines to file
+      if not os.path.exists(self.summary_dir):
+        os.makedirs(self.summary_dir)
+      test_summary_path = os.path.join(self.summary_dir, 'test_summary.txt')
+      with open(test_summary_path, 'w') as fp:
+        fp.write('\n'.join(lines))
+      print ('Wrote summary to ', test_summary_path)
+
     return (mean_acc, ci_acc, mean_acc_summary, ci_acc_summary,
             mean_other_metrics, ci_other_metrics, mean_other_metrics_summary, ci_other_metrics_summary)
 
