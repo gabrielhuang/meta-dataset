@@ -1,7 +1,5 @@
 #!/bin/bash
-export MODEL=$1
-export SOURCE=$2
-export EXPNAME=${MODEL}_${SOURCE}
+export EXPNAME=$1
 python2 -m meta_dataset.analysis.select_best_model \
 --all_experiments_root=$EXPROOT \
 --experiment_dir_basenames='' \
