@@ -1130,12 +1130,23 @@ class Trainer(object):
 
       # Compute metrics
       other_metrics = self.learners[split].get_other_metrics(tensors_for_metrics)
-      tf.logging.info('Other metrics {}'.format(other_metrics))
 
       # Accumulate
       for key in other_metrics:
         all_other_metrics.setdefault(key, [])
         all_other_metrics[key].append(other_metrics[key])
+      # Redundant, accumulate accuracy too
+      all_other_metrics.setdefault('SupervisedAcc', [])
+      all_other_metrics['SupervisedAcc'].append(acc)
+
+      # Log output
+      if eval_trial_num % 30 == 0 and split=='test':
+        # Reduce first
+        mean_other_metrics = {key:np.mean(val) for key,val in all_other_metrics.items()}
+        ci_other_metrics = {key:1.96 * np.std(val) / np.sqrt(len(val)) for key,val in all_other_metrics.items()}
+        tf.logging.info('Eval trial {}/{}'.format(eval_trial_num, num_eval_trials))
+        for key in mean_other_metrics:
+          tf.logging.info('-> {} {}: {:.5f} +/- {:.5f}'.format(split, key, mean_other_metrics[key], ci_other_metrics[key]))
 
       # Write evaluation summaries.
       if split == self.eval_split and self.summary_writer:
@@ -1160,7 +1171,7 @@ class Trainer(object):
     ci_acc_summary = tf.Summary()
     ci_acc_summary.value.add(tag='%s acc CI' % split, simple_value=ci_acc)
 
-    # Accumulate other metrics
+    # Reduce other metrics
     mean_other_metrics = {key:np.mean(val) for key,val in all_other_metrics.items()}
     ci_other_metrics = {key:1.96 * np.std(val) / np.sqrt(len(val)) for key,val in all_other_metrics.items()}
     # Generate summaries for maybe_evaluate()

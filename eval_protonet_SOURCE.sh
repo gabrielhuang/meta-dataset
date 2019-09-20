@@ -1,4 +1,5 @@
 #!/bin/bash
+trap "exit" INT  # abort on control-C
 export SOURCE=$1
 #for MODEL in baseline baselinefinetune matching prototypical maml maml_init_with_proto
 for MODEL in prototypical
