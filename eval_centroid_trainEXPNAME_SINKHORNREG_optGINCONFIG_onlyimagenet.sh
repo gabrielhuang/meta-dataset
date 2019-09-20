@@ -5,8 +5,7 @@ export SINKHORNREG=$2
 export GINCONFIG=${3:-$1} # ginconfig is samae as trainExpname unless otherwise specified
 for MODEL in centroid
 do
-  export trainEXPNAME=${MODEL}_${SOURCE}
-  export evalEXPNAME="${MODEL}_${SOURCE}_sinkhornreg_$SINKHORNREG"
+  export evalEXPNAME="${trainEXPNAME}_${SOURCE}_sinkhornreg_$SINKHORNREG"
   # set BESTNUM to the "best_update_num" field in the corresponding best_....txt
   export BESTNUM=$(grep best_update_num ${EXPROOT}/best_${trainEXPNAME}.txt | awk '{print $2;}')
   for DATASET in ilsvrc_2012
