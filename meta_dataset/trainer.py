@@ -219,7 +219,8 @@ class LearnConfig(object):
 
   def __init__(self, num_updates, batch_size, num_eval_episodes,
                checkpoint_every, validate_every, log_every,
-               transductive_batch_norm):
+               transductive_batch_norm,
+               num_eval_other_metrics=0):
     """Initializes a LearnConfig.
 
     Args:
@@ -242,6 +243,7 @@ class LearnConfig(object):
     self.validate_every = validate_every
     self.log_every = log_every
     self.transductive_batch_norm = transductive_batch_norm
+    self.num_eval_other_metrics = num_eval_other_metrics
 
 
 # TODO(manzagop): consider moving here num_updates/batch_size from LearnConfig.
@@ -1146,7 +1148,10 @@ class Trainer(object):
       accuracies.append(acc)
 
       # Compute metrics
-      other_metrics = self.learners[split].get_other_metrics(tensors_for_metrics)
+      # Limit number of times unless it is test split
+      other_metrics = {}
+      if split == 'test' or self.learn_config.num_eval_other_metrics==0 or eval_trial_num < self.learn_config.num_eval_other_metrics:
+        other_metrics = self.learners[split].get_other_metrics(tensors_for_metrics)
 
       # Accumulate
       for key in other_metrics:
