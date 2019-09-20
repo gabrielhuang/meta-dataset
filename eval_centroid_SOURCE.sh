@@ -17,6 +17,6 @@ do
       --gin_bindings="LearnerConfig.pretrained_checkpoint=''" \
       --gin_bindings="LearnerConfig.checkpoint_for_eval='${EXPROOT}/checkpoints/${EXPNAME}/model_${BESTNUM}.ckpt'" \
       --gin_bindings="benchmark.eval_datasets='$DATASET'" \
-      --gin_bindings="LearnConfig.num_eval_episodes=60"
+      --gin_bindings="LearnConfig.num_eval_episodes=6"
   done
 done

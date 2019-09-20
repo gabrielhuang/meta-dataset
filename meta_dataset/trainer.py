@@ -77,6 +77,18 @@ def make_text_summary(tag, text):
   return text_summary
 
 
+def get_uncertain_ratio(a, b, ci_a, ci_b, epsilon=1e-6):
+  '''
+  Compute CI of a/b assuming a and b have zero covariance
+  https://en.wikipedia.org/wiki/Propagation_of_uncertainty#Example
+  '''
+  a = float(max(a, epsilon))
+  b = float(max(b, epsilon))
+  a_over_b = a / b
+  ci_a_over_b = np.abs(a_over_b) * np.sqrt((ci_a/a)**2+(ci_b/b)**2)
+  return a_over_b, ci_a_over_b
+
+
 @gin.configurable('benchmark')
 def get_datasets_and_restrictions(train_datasets='',
                                   eval_datasets='',
@@ -1182,9 +1194,12 @@ class Trainer(object):
 
     # Introduce a compound metric , CSCC
     if UA in mean_other_metrics and SA in mean_other_metrics:
-      cscc = np.clip(mean_other_metrics[UA] / max(mean_other_metrics[SA], 1e-6), 0, 1)
-      mean_other_metrics['CSCC'] = cscc
-      ci_other_metrics['CSCC'] = 0.
+      cscc_mean, cscc_ci = get_uncertain_ratio(mean_other_metrics[UA], mean_other_metrics[SA],
+              ci_other_metrics[UA], ci_other_metrics[SA])
+      print ('UA',mean_other_metrics[UA])
+      print ('SA',mean_other_metrics[SA])
+      mean_other_metrics['CSCC'] = cscc_mean
+      ci_other_metrics['CSCC'] = cscc_ci
 
     # Generate summaries for maybe_evaluate()
     mean_other_metrics_summary = {}
@@ -1203,6 +1218,9 @@ class Trainer(object):
       for key in mean_other_metrics:
         lines.append('Test {}: {:.5f}, +/- {:.5f}'.format(key, mean_other_metrics[key], ci_other_metrics[key]))
       self.summary_writer.add_summary(make_text_summary('Summary', '<br>\n'.join(lines)), num_eval_trials)
+      tf.logging.info('*'*32)
+      tf.logging.info('\n'.join(lines))
+      tf.logging.info('*'*32)
 
     return (mean_acc, ci_acc, mean_acc_summary, ci_acc_summary,
             mean_other_metrics, ci_other_metrics, mean_other_metrics_summary, ci_other_metrics_summary)
