@@ -1,4 +1,5 @@
 #!/bin/bash
+trap "exit" INT
 for sinkhornreg in 1 3 10 30 100 300 1000 3000
 do
 	echo "Evaluating SinkhornReg=${sinkhornreg}"
