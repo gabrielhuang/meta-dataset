@@ -1116,6 +1116,11 @@ class Trainer(object):
 
   def evaluate(self, split):
     """Returns performance metrics across num_eval_trials episodes / batches."""
+
+    # Constants
+    UA = 'UnsupervisedAcc_softmax'
+    SA = 'SupervisedAcc'
+
     num_eval_trials = self.learn_config.num_eval_episodes
     tf.logging.info(
         'Performing evaluation of the %s split using %d episodes...' %
@@ -1136,8 +1141,8 @@ class Trainer(object):
         all_other_metrics.setdefault(key, [])
         all_other_metrics[key].append(other_metrics[key])
       # Redundant, accumulate accuracy too
-      all_other_metrics.setdefault('SupervisedAcc', [])
-      all_other_metrics['SupervisedAcc'].append(acc)
+      all_other_metrics.setdefault(SA, [])
+      all_other_metrics[SA].append(acc)
 
       # Log output
       if eval_trial_num % 30 == 0 and split=='test':
@@ -1174,6 +1179,13 @@ class Trainer(object):
     # Reduce other metrics
     mean_other_metrics = {key:np.mean(val) for key,val in all_other_metrics.items()}
     ci_other_metrics = {key:1.96 * np.std(val) / np.sqrt(len(val)) for key,val in all_other_metrics.items()}
+
+    # Introduce a compound metric , CSCC
+    if UA in mean_other_metrics and SA in mean_other_metrics:
+      cscc = np.clip(mean_other_metrics[UA] / max(mean_other_metrics[SA], 1e-6), 0, 1)
+      mean_other_metrics['CSCC'] = cscc
+      ci_other_metrics['CSCC'] = 0.
+
     # Generate summaries for maybe_evaluate()
     mean_other_metrics_summary = {}
     ci_other_metrics_summary = {}
