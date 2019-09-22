@@ -1,6 +1,6 @@
 #!/bin/bash
 ulimit -n 100000 # increase open file limit
-export SOURCE=$1  # all/imagenet
+export SOURCE=all  # all/imagenet
 export CENTERLOSS=$2  # float, 1 is a decent default
 export SINKHORNREG=${3:-10}
 #for MODEL in baselinefinetune prototypical matching maml maml_init_with_proto
@@ -17,6 +17,7 @@ do
     --gin_bindings="LearnConfig.num_eval_episodes=600" \
     --gin_bindings="LearnConfig.num_eval_other_metrics=60" \
     --gin_bindings="LearnConfig.log_every=10" \
+    --gin_bindings="LearnerConfig.pretrained_checkpoint='${EXPROOT}/checkpoints/baseline_imagenet_resnet/model_37000.ckpt'"
     --gin_bindings="DataConfig.shuffle_buffer_size=300" \
     --gin_bindings="CentroidNetworkLearner.center_loss=$CENTERLOSS" \
     --gin_bindings="CentroidNetworkLearner.sinkhorn_regularization=${SINKHORNREG}" 
