@@ -20,6 +20,6 @@ do
 	  --gin_bindings="LearnerConfig.pretrained_checkpoint=''" \
 	  --gin_bindings="LearnerConfig.checkpoint_for_eval='${EXPROOT}/checkpoints/${trainEXPNAME}/model_${BESTNUM}.ckpt'" \
 	  --gin_bindings="benchmark.eval_datasets='$DATASET'" \
-	  --gin_bindings="LearnConfig.num_eval_episodes=10" \
+	  --gin_bindings="LearnConfig.num_eval_episodes=600" \
 	  --gin_bindings="CentroidNetworkLearner.sinkhorn_regularization=${SINKHORNREG}" 
 done
