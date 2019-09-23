@@ -8,6 +8,8 @@ for MODEL in centroid
 do
   export CONFIGNAME=${MODEL}_${SOURCE}
   export EXPNAME=${MODEL}_${SOURCE}_${CENTERLOSS}
+  export BESTNUM=$(grep best_update_num ${EXPROOT}/best_baseline_imagenet_resnet.txt | awk '{print $2;}')
+  echo "Best pretrained is ${BESTNUM}"
   python2 -m meta_dataset.train \
     --records_root_dir=$RECORDS \
     --train_checkpoint_dir=${EXPROOT}/checkpoints/${EXPNAME} \
