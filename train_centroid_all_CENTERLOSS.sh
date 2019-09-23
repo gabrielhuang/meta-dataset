@@ -19,7 +19,7 @@ do
     --gin_bindings="LearnConfig.num_eval_episodes=600" \
     --gin_bindings="LearnConfig.num_eval_other_metrics=60" \
     --gin_bindings="LearnConfig.log_every=10" \
-    --gin_bindings="LearnerConfig.pretrained_checkpoint='${EXPROOT}/checkpoints/baseline_imagenet_resnet/${BESTNUM}.ckpt'"\
+    --gin_bindings="LearnerConfig.pretrained_checkpoint='${EXPROOT}/checkpoints/baseline_imagenet_resnet/model_${BESTNUM}.ckpt'"\
     --gin_bindings="DataConfig.shuffle_buffer_size=300" \
     --gin_bindings="CentroidNetworkLearner.center_loss=$CENTERLOSS" \
     --gin_bindings="CentroidNetworkLearner.sinkhorn_regularization=${SINKHORNREG}" 
