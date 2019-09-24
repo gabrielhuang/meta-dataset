@@ -10,7 +10,8 @@ for DATASET in ilsvrc_2012 omniglot aircraft cu_birds dtd quickdraw fungi vgg_fl
 do
   export evalEXPNAME="${PREFIX}${trainEXPNAME}_${SOURCE}_sinkhornreg_$SINKHORNREG"
   # set BESTNUM to the "best_update_num" field in the corresponding best_....txt
-  export BESTNUM=$(grep best_update_num ${EXPROOT}/best_${trainEXPNAME}.txt | awk '{print $2;}')
+  #export BESTNUM=$(grep best_update_num ${EXPROOT}/best_${trainEXPNAME}.txt | awk '{print $2;}')
+  export BESTNUM=40000
   python2 -m meta_dataset.train \
 	  --is_training=False \
 	  --records_root_dir=$RECORDS \
