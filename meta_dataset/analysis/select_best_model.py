@@ -62,6 +62,12 @@ import tensorflow as tf
 FLAGS = tf.flags.FLAGS
 
 tf.flags.DEFINE_string(
+    'metric',
+    'mean valid acc',
+    'Which metric (default mean val acc)')
+
+
+tf.flags.DEFINE_string(
     'all_experiments_root',
     '',
     'The overall experiments directory root.')
@@ -245,7 +251,7 @@ def extract_best_from_event_file(event_path):
   for event in tf.train.summary_iterator(event_path):
     step = event.step
     for value in event.summary.value:
-      if value.tag == 'mean valid acc':
+      if value.tag == FLAGS.metric:
         steps.append(step)
         valid_accs.append(value.simple_value)
   argmax_ind = np.argmax(valid_accs)
@@ -276,6 +282,7 @@ def main(argv):
       for basename in FLAGS.experiment_dir_basenames.split(',')
   ]
   # Perform model selection for each provided experiment root.
+  print('metric = {}'.format(FLAGS.metric))
   for root_experiment_dir in experiment_paths:
     stars_string = '**************************************\n'
     architecture_string = ''
@@ -351,8 +358,8 @@ def main(argv):
           'best_variant: {}\nbest_valid_acc: {}\nbest_update_num: {}\n'.format(
               best_variant, best_valid_acc, best_step))
     tf.logging.info(
-        'Best variant: {}. Best valid acc: {}. Best update num: {}. '
-        'Just wrote this info to {} and {}'.format(best_variant, best_valid_acc,
+        'Best variant: {}. Best "{}": {}. Best update num: {}. '
+        'Just wrote this info to {} and {}'.format(best_variant, FLAGS.metric, best_valid_acc,
                                                    best_step, output_path_pklz,
                                                    output_path_txt))
 
