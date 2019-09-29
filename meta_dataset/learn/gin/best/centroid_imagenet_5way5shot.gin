@@ -2,5 +2,5 @@ include 'meta_dataset/learn/gin/best/centroid_imagenet.gin'
 include 'meta_dataset/learn/gin/setups/5way5shotmode.gin'
 
 # Override sinkhorn distance and have more iterations
-CentroidNetworksLearner.sinkhorn_iterations = 40
-CentroidNetworksLearner.sinkhorn_iterations_warmstart = 40
+CentroidNetworkLearner.sinkhorn_iterations = 40
+CentroidNetworkLearner.sinkhorn_iterations_warmstart = 40
