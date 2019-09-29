@@ -27,6 +27,8 @@ from six.moves import range
 from six.moves import zip
 import tensorflow as tf
 
+import torch
+
 from . import centroid_helpers
 
 MAX_WAY = 50  # The maximum number of classes we will see in any batch.
@@ -895,7 +897,8 @@ class CentroidNetworkLearner(PrototypicalNetworkLearner):
   def __init__(self, is_training, transductive_batch_norm,
                  backprop_through_moments, ema_object, embedding_fn, reader,
                  weight_decay, center_loss, center_loss_normalize='sum',
-                 normalize_by_dim=True, sinkhorn_regularization=1.):
+                 normalize_by_dim=True, sinkhorn_regularization=1.,
+                 clustering_iterations=20, sinkhorn_iterations=20, sinkhorn_iterations_warmstart=4):
     PrototypicalNetworkLearner.__init__(self,
                                             is_training, transductive_batch_norm,
                                             backprop_through_moments, ema_object, embedding_fn, reader, weight_decay)
@@ -905,6 +908,9 @@ class CentroidNetworkLearner(PrototypicalNetworkLearner):
     tf.logging.info('CentroidNetworkLearner: weight_decay {}'.format(self.center_loss))
     self.normalize_by_dim = normalize_by_dim
     self.sinkhorn_regularization = sinkhorn_regularization
+    self.clustering_iterations = clustering_iterations
+    self.sinkhorn_iterations = sinkhorn_iterations
+    self.sinkhorn_iterations_warmstart = sinkhorn_iterations_warmstart
 
     # One hote representaitons
     self.train_labels_onehot = tf.one_hot(self.episode.train_labels, self.way)
@@ -957,7 +963,18 @@ class CentroidNetworkLearner(PrototypicalNetworkLearner):
     '''
     Return metrics such as clustering and unsupervised accuracy
     '''
-    return centroid_helpers.get_clustering_metrics(tensors_for_metrics, self.sinkhorn_regularization, self.normalize_by_dim)
+    # Convert to torch
+    embedded_sample = {
+      'support_embeddings': torch.from_numpy(tensors_for_metrics['support_embeddings']),
+      'query_embeddings': torch.from_numpy(tensors_for_metrics['query_embeddings']),
+      'support_labels': torch.LongTensor(tensors_for_metrics['support_labels']),
+      'query_labels': torch.LongTensor(tensors_for_metrics['query_labels']),
+      'support_labels_onehot': torch.FloatTensor(tensors_for_metrics['support_labels_onehot']),
+      'query_labels_onehot': torch.FloatTensor(tensors_for_metrics['query_labels_onehot']),
+      'way': tensors_for_metrics['way']
+    }
+    return centroid_helpers.clustering_loss(embedded_sample, self.sinkhorn_regularization, 'wasserstein',
+      self.normalize_by_dim, self.clustering_iterations, self.sinkhorn_iterations, self.sinkhorn_iterations_warmstart)
 
 
 @gin.configurable

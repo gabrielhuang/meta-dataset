@@ -120,7 +120,8 @@ def get_pairwise_distances(m, n):
   return distance_matrix
 
 
-def cluster_wasserstein_flat(X, n_components, regularization=100., iterations=20, stop_gradient=True, weights=None, add_noise=0.001):
+def cluster_wasserstein_flat(X, n_components, regularization=100., iterations=20, stop_gradient=True, weights=None,
+                             add_noise=0.001, sinkhorn_iterations=20, sinkhorn_iterations_warmstart=4):
   '''
 
   :param X: tensor of shape (n_data, n_dim)
@@ -141,12 +142,11 @@ def cluster_wasserstein_flat(X, n_components, regularization=100., iterations=20
 
     distances = get_pairwise_distances(X, centroids)
     # Expectation - Compute Sinkhorn distance
-    sinkhorn_iterations = 20 if iteration == 0 else 4
     dst, P, log_P, log_u, log_v = compute_sinkhorn_stable(distances,
-                                                          regularization=regularization,
-                                                          log_v=log_v,  # warm start after first iteration
-                                                          c=weights,  # set cluster masses (None means uniform)
-                                                          iterations=sinkhorn_iterations)
+      regularization=regularization,
+      log_v=log_v,  # warm start after first iteration
+      c=weights,  # set cluster masses (None means uniform)
+      iterations=sinkhorn_iterations if iteration==0 else sinkhorn_iterations_warmstart)
     soft_assignments = P / P.sum(0, keepdim=True)  # P_ij / sum_i P_ij is soft-assignment of cluster j
     # TODO: maybe dividing by constant will simplify graphs?
 
@@ -159,16 +159,6 @@ def cluster_wasserstein_flat(X, n_components, regularization=100., iterations=20
     if add_noise > 0:
       centroids.add_(add_noise * torch.randn(centroids.size()).to(X.device))
 
-  return centroids, P
-
-
-def cluster_wasserstein(X, n_components, regularization=100., iterations=20, stop_gradient=True, weights=None, add_noise=0.001):
-  X_flat = X.view((len(X), -1))
-  centroids_flat, P = cluster_wasserstein_flat(X_flat, n_components, regularization, iterations, stop_gradient,
-                                               weights, add_noise)
-  size = list(X.size())
-  size[0] = n_components
-  centroids = centroids_flat.view(size)
   return centroids, P
 
 
@@ -237,7 +227,9 @@ def cluster_kmeans(X, n_components, iterations=20, kmeansplusplus=False, epsilon
   return centroids
 
 
-def clustering_loss(embedded_sample, regularization, clustering_type, normalize_by_dim=True, sanity_check=False):
+def clustering_loss(embedded_sample, regularization, clustering_type, normalize_by_dim=True,
+                    clustering_iterations=20, sinkhorn_iterations=20, sinkhorn_iterations_warmstart=4,
+                    sanity_check=False):
   '''
   This function returns results for two settings (simultaneously):
   - Learning to Cluster:
@@ -282,8 +274,9 @@ def clustering_loss(embedded_sample, regularization, clustering_type, normalize_
   # Cluster support set into clusters (both for learning to cluster and unsupervised few shot learning)
   assert clustering_type == 'wasserstein'
   if clustering_type == 'wasserstein':
-    z_centroid, __ = cluster_wasserstein(z_support, n_class, weights=support_freq, stop_gradient=False,
-                                                     regularization=regularization)
+    z_centroid, __ = cluster_wasserstein_flat(z_support, n_class, regularization=regularization,
+      iterations=clustering_iterations, weights=support_freq, stop_gradient=True,
+      sinkhorn_iterations=sinkhorn_iterations, sinkhorn_iterations_warmstart=sinkhorn_iterations_warmstart)
   elif clustering_type == 'kmeans':
     z_centroid = cluster_kmeans(z_support, n_class, kmeansplusplus=False)
   elif clustering_type == 'kmeansplusplus':
@@ -349,18 +342,3 @@ def clustering_loss(embedded_sample, regularization, clustering_type, normalize_
     'UnsupervisedAcc_softmax': all_query_clustering_accuracy['softmax'],
     'UnsupervisedAcc_sinkhorn': all_query_clustering_accuracy['sinkhorn'],
   }
-
-
-def get_clustering_metrics(tensors_for_metrics, sinkhorn_regularization, normalize_by_dim):
-  # Convert to torch
-  embedded_sample = {
-    'support_embeddings': torch.from_numpy(tensors_for_metrics['support_embeddings']),
-    'query_embeddings': torch.from_numpy(tensors_for_metrics['query_embeddings']),
-    'support_labels': torch.LongTensor(tensors_for_metrics['support_labels']),
-    'query_labels': torch.LongTensor(tensors_for_metrics['query_labels']),
-    'support_labels_onehot': torch.FloatTensor(tensors_for_metrics['support_labels_onehot']),
-    'query_labels_onehot': torch.FloatTensor(tensors_for_metrics['query_labels_onehot']),
-    'way': tensors_for_metrics['way']
-  }
-  return clustering_loss(embedded_sample, sinkhorn_regularization, 'wasserstein', normalize_by_dim)
-
