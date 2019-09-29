@@ -1,11 +1,13 @@
 import sys
 import os
 
-if len(sys.argv)!=3:
-    print 'Usage: {} EXPROOT PREFIX'
+if len(sys.argv)<3:
+    print 'Usage: {} EXPROOT PREFIX KEY'
 EXPROOT = sys.argv[1]
 PREFIX = sys.argv[2]
 VALUE = 'UnsupervisedAcc_softmax'
+if len(sys.argv)>3:
+    VALUE = sys.argv[3]
 
 print 'EXPROOT: {}'.format(EXPROOT)
 print 'PREFIX: {}'.format(PREFIX)
