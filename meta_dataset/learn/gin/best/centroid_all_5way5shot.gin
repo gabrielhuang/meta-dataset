@@ -1,6 +1,2 @@
 include 'meta_dataset/learn/gin/best/centroid_all.gin'
-
-# Setting those 3 should override all others
-EpisodeDescriptionConfig.num_ways = 5
-EpisodeDescriptionConfig.num_support = 5
-EpisodeDescriptionConfig.num_query = 15  # like protonet code
+include 'meta_dataset/learn/gin/setups/5way5shotmode.gin'
